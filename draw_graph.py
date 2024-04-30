@@ -116,26 +116,34 @@ def random_mask(
     result_processing_time_matrix = []
     result_machine_matrix = []
 
-    for times, machines in zip(deprecated_time_matrix, deprecated_machine_matrix):
-        random_machines = np.sort(
-            np.random.choice(range(num_machine), decrement_num_machine, replace=False)
-        )
-        result_processing_time_matrix.append(times[random_machines])
-        result_machine_matrix.append(machines[random_machines])
+    start_machine = num_machine - decrement_num_machine
+    deprecated_time_matrix = deprecated_time_matrix[:, start_machine:]
+    deprecated_machine_matrix = deprecated_machine_matrix[:, start_machine:]
 
-    return np.array(result_processing_time_matrix), np.array(result_machine_matrix)
+    return deprecated_time_matrix, deprecated_machine_matrix
 
 
 if __name__ == "__main__":
 
     # Parameters
-    num_jobs = 3  # number of jobs
-    num_machines = 3  # number of machines
+    num_jobs = 4  # number of jobs
+    num_machines = 4  # number of machines
 
     # Generate instance
     processing_time_matrix, machine_matrix = generate_instance(num_jobs, num_machines)
     G = make_graph(processing_time_matrix, machine_matrix)
-    draw_graph(G, num_machines)
+    deprecated_time_matrix, deprecated_machine_matrix = random_mask(
+        processing_time_matrix, machine_matrix, num_jobs, num_machines, 2, 2
+    )
+    g = make_graph(deprecated_time_matrix, deprecated_machine_matrix)
+    # draw_graph(G, num_machines)
+
+    print_instance(processing_time_matrix, machine_matrix)
+    print_instance(deprecated_time_matrix, deprecated_machine_matrix)
+
+    # print(nx.graph_edit_distance(G, g))
+    # print(nx.optimize_edit_paths(G, g))
+
     exit()
     # Random mask를 통해서 instance 데이터 축소 10x10 -> 8x8
     deprecated_time_matrix, dprecated_machine_matrix = random_mask(
