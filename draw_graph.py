@@ -113,9 +113,6 @@ def random_mask(
     deprecated_time_matrix = processing_time_matrix[random_jobs]
     deprecated_machine_matrix = machine_matrix[random_jobs]
 
-    result_processing_time_matrix = []
-    result_machine_matrix = []
-
     start_machine = num_machine - decrement_num_machine
     deprecated_time_matrix = deprecated_time_matrix[:, start_machine:]
     deprecated_machine_matrix = deprecated_machine_matrix[:, start_machine:]
