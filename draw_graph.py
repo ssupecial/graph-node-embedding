@@ -54,7 +54,7 @@ def make_graph(processing_time_matrix, machine_matrix) -> nx.DiGraph:
 
             # 순차적 간선 추가 (동일 작업 내)
             if previous_node:
-                G.add_edge(previous_node, node, type="sequential")
+                G.add_edge(previous_node, node, type="CONJUNCTIVE")
             previous_node = node
 
             # 작업 간 연결 추가 (동일 기계 사용)
@@ -67,9 +67,9 @@ def make_graph(processing_time_matrix, machine_matrix) -> nx.DiGraph:
         for job_id, step_id in zip(job_ids, step_ids):
             node = f"{job_id}-{step_id}"
             for job_id2, step_id2 in zip(job_ids, step_ids):
-                if job_id != job_id2 and step_id != step_id2:
+                if not (job_id == job_id2 and step_id == step_id2):
                     other_node = f"{job_id2}-{step_id2}"
-                    G.add_edge(other_node, node, type="inter-job")
+                    G.add_edge(other_node, node, type="DISJUNCTIVE")
 
     return G
 
@@ -129,12 +129,14 @@ def random_mask(
 if __name__ == "__main__":
 
     # Parameters
-    num_jobs = 10  # number of jobs
-    num_machines = 10  # number of machines
+    num_jobs = 3  # number of jobs
+    num_machines = 3  # number of machines
 
     # Generate instance
     processing_time_matrix, machine_matrix = generate_instance(num_jobs, num_machines)
-
+    G = make_graph(processing_time_matrix, machine_matrix)
+    draw_graph(G, num_machines)
+    exit()
     # Random mask를 통해서 instance 데이터 축소 10x10 -> 8x8
     deprecated_time_matrix, dprecated_machine_matrix = random_mask(
         processing_time_matrix, machine_matrix, num_jobs, num_machines, 8, 8
@@ -145,8 +147,8 @@ if __name__ == "__main__":
     print_instance(deprecated_time_matrix, dprecated_machine_matrix)
 
     # Make Graph from instance
-    # G = make_graph(processing_time_matrix, machine_matrix)
-    G = make_graph(deprecated_time_matrix, dprecated_machine_matrix)
+    G = make_graph(processing_time_matrix, machine_matrix)
+    # G = make_graph(deprecated_time_matrix, dprecated_machine_matrix)
 
     # print("Nodes:", G.nodes(data=True))
     # print("Edges:", G.edges(data=True))
