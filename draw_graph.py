@@ -2,6 +2,9 @@ import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 from node2vec import Node2Vec
+import time
+from grakel import Graph
+from grakel.kernels import WeisfeilerLehman
 
 
 def generate_instance(num_jobs, num_machines, time_min=1, time_max=100):
@@ -52,14 +55,12 @@ def make_graph(processing_time_matrix, machine_matrix) -> nx.DiGraph:
             node = f"{job_index}-{step_index}"
             G.add_node(node, machine=machine, time=time)
 
-            # 순차적 간선 추가 (동일 작업 내)
+            # Conjunctive Graph (동일 작업 내)
             if previous_node:
                 G.add_edge(previous_node, node, type="CONJUNCTIVE")
             previous_node = node
 
-            # 작업 간 연결 추가 (동일 기계 사용)
-
-    # Disjunctive Graph
+    # Disjunctive Graph (동일 기계 사용)
     machine_indexes = set(machine_matrix.flatten().tolist())
     for m_idx in machine_indexes:
         job_ids, step_ids = np.where(machine_matrix == m_idx)
@@ -101,7 +102,7 @@ def draw_graph(G: nx.DiGraph, machine_num: int):
 def random_mask(
     processing_time_matrix,
     machine_matrix,
-    num_job,
+    num_job,  # job 개수
     num_machine,  # machine 개수
     decrement_num_job,  # 축소시킬 job 사이즈
     decrement_num_machine,  # 각 job의 축소시킬 operation 사이즈
@@ -120,44 +121,151 @@ def random_mask(
     return deprecated_time_matrix, deprecated_machine_matrix
 
 
+def edge_similarity(graph1, graph2):
+    cur = time.time()
+    edges1 = set(graph1.edges())
+    edges2 = set(graph2.edges())
+
+    common_edges = edges1.intersection(edges2)
+    all_edges = edges1.union(edges2)
+
+    if len(edges1) == 0:
+        return 0.0
+
+    similarity = len(common_edges) / len(all_edges)
+    fin = time.time()
+    return similarity, fin - cur
+
+
+def edge_similarity_grakel(
+    source_graph: nx.DiGraph, target_graph: nx.DiGraph, n_iter: int
+):
+    cur = time.time()
+
+    def nx_to_grakel(G):
+        node_labels = nx.get_node_attributes(G, "machine")  # node attribute
+        edge_labels = nx.get_edge_attributes(G, "type")  # edge attribute
+        return Graph(list(G.edges()), node_labels=node_labels, edge_labels=edge_labels)
+
+    wl_kernel = WeisfeilerLehman(n_iter=n_iter)
+    K = wl_kernel.fit_transform(
+        [nx_to_grakel(source_graph), nx_to_grakel(target_graph)]
+    )
+
+    fin = time.time()
+
+    similarity = K[0, 1]  # Source-Target graph similarity
+    ratio = K[0, 0]  # Source graph similarity
+    return similarity / ratio, fin - cur
+
+
+def edge_similarity_cosine(source_graph: nx.DiGraph, target_graph: nx.DiGraph):
+    pass
+
+
+def edge_similarity_mcs(source_graph: nx.DiGraph, target_graph: nx.DiGraph):
+    # Maximum Common Subgraph
+    cur = time.time()
+    mcs = nx.algorithms.isomorphism.GraphMatcher(source_graph, target_graph)
+    max_common_subgraph = max(
+        (len(subgraph), subgraph) for subgraph in mcs.subgraph_isomorphisms_iter()
+    )[1]
+    fin = time.time()
+
+    print("Maximum Common Subgraph:", max_common_subgraph)
+    return len(max_common_subgraph) / len(source_graph.edges()), fin - cur
+
+
+def edge_similarity_sc(source_graph: nx.DiGraph, target_graph: nx.DiGraph):
+    # Spectral Comparison
+    cur = time.time()
+    A1 = nx.adjacency_matrix(source_graph).todense()
+    A2 = nx.adjacency_matrix(target_graph).todense()
+
+    # 고유값 계산
+    eigenvalues1 = np.linalg.eigvals(A1)
+    eigenvalues2 = np.linalg.eigvals(A2)
+
+    # 유클리드 거리 계산
+    euclidean_distance = np.linalg.norm(eigenvalues1 - eigenvalues2)
+    # print("Euclidean Distance:", euclidean_distance)
+
+    # 코사인 유사도 계산
+    cosine_similarity = np.dot(eigenvalues1, eigenvalues2) / (
+        np.linalg.norm(eigenvalues1) * np.linalg.norm(eigenvalues2)
+    )
+    fin = time.time()
+
+    # return cosine_similarity, fin - cur
+    return cosine_similarity
+
+
+def make_vectors(processing_time_matrix, machine_matrix, dimensions=20):
+    G = make_graph(processing_time_matrix, machine_matrix)
+    node2vec = Node2Vec(
+        G, dimensions=dimensions, walk_length=30, num_walks=200, workers=4, p=1, q=1
+    )
+    model = node2vec.fit(window=10, min_count=1, batch_words=4)
+    node_embeddings = np.array([model.wv[str(node)] for node in G.nodes()])
+    return node_embeddings
+
+
 if __name__ == "__main__":
 
     # Parameters
-    num_jobs = 4  # number of jobs
-    num_machines = 4  # number of machines
+    num_jobs = 100  # number of jobs
+    num_machines = 20  # number of machines
 
     # Generate instance
     processing_time_matrix, machine_matrix = generate_instance(num_jobs, num_machines)
+    embeddings = make_vectors(processing_time_matrix, machine_matrix, 20)
+
+    exit()
     G = make_graph(processing_time_matrix, machine_matrix)
-    deprecated_time_matrix, deprecated_machine_matrix = random_mask(
-        processing_time_matrix, machine_matrix, num_jobs, num_machines, 2, 2
-    )
-    g = make_graph(deprecated_time_matrix, deprecated_machine_matrix)
+
+    # deprecated_time_matrix, deprecated_machine_matrix = random_mask(
+    #     processing_time_matrix, machine_matrix, num_jobs, num_machines, 8, 8
+    # )
+    # deprecated_graph = make_graph(deprecated_time_matrix, deprecated_machine_matrix)
+
+    # processing_time_matrix2, machine_matrix2 = generate_instance(num_jobs, num_machines)
+    # G2 = make_graph(processing_time_matrix2, machine_matrix2)
     # draw_graph(G, num_machines)
 
-    print_instance(processing_time_matrix, machine_matrix)
-    print_instance(deprecated_time_matrix, deprecated_machine_matrix)
+    # print_instance(processing_time_matrix, machine_matrix)
+    # print_instance(deprecated_time_matrix, deprecated_machine_matrix)
 
     # print(nx.graph_edit_distance(G, g))
     # print(nx.optimize_edit_paths(G, g))
 
-    exit()
     # Random mask를 통해서 instance 데이터 축소 10x10 -> 8x8
-    deprecated_time_matrix, dprecated_machine_matrix = random_mask(
-        processing_time_matrix, machine_matrix, num_jobs, num_machines, 8, 8
-    )
+    # deprecated_time_matrix, dprecated_machine_matrix = random_mask(
+    #     processing_time_matrix, machine_matrix, num_jobs, num_machines, 8, 8
+    # )
 
     # Print instance
-    print_instance(processing_time_matrix, machine_matrix)
-    print_instance(deprecated_time_matrix, dprecated_machine_matrix)
+    # print_instance(processing_time_matrix, machine_matrix)
+    # print_instance(deprecated_time_matrix, dprecated_machine_matrix)
 
     # Make Graph from instance
-    G = make_graph(processing_time_matrix, machine_matrix)
+    # G = make_graph(processing_time_matrix, machine_matrix)
     # G = make_graph(deprecated_time_matrix, dprecated_machine_matrix)
 
     # print("Nodes:", G.nodes(data=True))
     # print("Edges:", G.edges(data=True))
-    draw_graph(G, num_machines)
+    # draw_graph(G, num_machines)
+
+    # similarity, duration = edge_similarity_sc(G, G2)
+    # print(similarity)
+    # print(duration)
+
+    # result, duration = edge_similarity_grakel(G, deprecated_graph, 10)
+    # print(result)
+    # print(duration)
+
+    # exit()
+
+    cur2 = time.time()
 
     node2vec = Node2Vec(
         G, dimensions=20, walk_length=30, num_walks=200, workers=4, p=1, q=1
@@ -173,8 +281,10 @@ if __name__ == "__main__":
     )  # Any keywords acceptable by gensim.Word2Vec can be passed, `dimensions` and `workers` are automatically passed (from the Node2Vec constructor)
 
     # Look for most similar nodes
+    fin2 = time.time()
     a = model.wv.most_similar("1-1")  # Output node names are always strings
     print(a)
+    print(fin2 - cur2)
     EMBEDDING_FILENAME = "test.emb"
     EMBEDDING_MODEL_FILENAME = "test.model"
 
